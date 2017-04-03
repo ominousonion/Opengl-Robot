@@ -9,24 +9,28 @@
 #define MENU_EXIT 3
 #define MENU_IDLE 4
 #define MENU_GREETING 5
+#define MENU_BOW 6
 
 //GLUT timer variable
 GLubyte timer_cnt = 0;
 bool timer_enabled = true;
 unsigned int timer_speed = 16;
-int mode = 0; //0:idle 1:greeting
+int mode = 0; //0:idle 1:greeting 2:bow
 int oldTimeSinceStart;
 int timeSinceStart, deltaTime;
 
 int animationOldTimeSinceStart;
 int animationTimeSinceStart, animationDeltaTime;
 
-bool greeting_phase_1, greeting_phase_2, greeting_phase_3, greeting_phase_4;
+bool greeting_phase_1, greeting_phase_2, greeting_phase_3;
 float greeting_phase_1_arm_angle, greeting_phase_1_hand_angle;
-float greeting_phase_2_hand_angle, greeting_phase_2_arm_angle, greeting_phase_2_body_angle, greeting_phase_2_leg_angle;
+float greeting_phase_2_hand_angle;
+float clock;
 
+bool bow_phase_1, bow_phase_2, bow_phase_3;
+float bow_1_body_angle, bow_1_leg_angle;
 
-bool keyStates[4] = {false, false, false, false};//0:up 1:left 2:down 3:right
+bool keyStates[4] = { false, false, false, false };//0:up 1:left 2:down 3:right
 using namespace glm;
 using namespace std;
 
@@ -103,7 +107,7 @@ Robot::Robot(float x, float y, float z) {
 
 	head = Sphere(position.x, position.y, position.z, 0.55, 0.5, 0.55);
 	head.set_color(1.0, 1.0, 1.0);
-	
+
 	hat_down = Cylinder(position.x, position.y, position.z, 0.6, 0.6, 0.005);
 	hat_down.set_color(0.0, 0.0, 0.0);
 
@@ -111,7 +115,7 @@ Robot::Robot(float x, float y, float z) {
 	hat_up.set_color(0.0, 0.0, 0.0);
 
 	eye_L = Sphere(position.x, position.y, position.z, 0.1, 0.1, 0.1);
-	eye_L.set_color(1.0,1.0,0.0);
+	eye_L.set_color(1.0, 1.0, 0.0);
 
 	eye_R = Sphere(position.x, position.y, position.z, 0.1, 0.1, 0.1);
 	eye_R.set_color(1.0, 1.0, 0.0);
@@ -221,7 +225,6 @@ Robot::Robot(float x, float y, float z) {
 }
 
 void Robot::draw() {
-
 	model_matrix = model_body;
 	draw_part_texture(body.get_vertex(), body.get_index(), body.get_tc_data(), body.get_amount_of_vertex(), body.get_tc_length(), body.get_index_length(), body.get_vertex_dim());
 
@@ -230,10 +233,10 @@ void Robot::draw() {
 
 	model_matrix = model_eye_L;
 	draw_part_normal(eye_L.get_vertex(), eye_L.get_index(), eye_L.get_color_data(), eye_L.get_amount_of_vertex(), eye_L.get_index_length(), eye_L.get_vertex_dim());
-	
+
 	model_matrix = model_eye_R;
 	draw_part_normal(eye_R.get_vertex(), eye_R.get_index(), eye_R.get_color_data(), eye_R.get_amount_of_vertex(), eye_R.get_index_length(), eye_R.get_vertex_dim());
-	
+
 	model_matrix = model_hat_up;
 	draw_part_normal(hat_up.get_vertex(), hat_up.get_index(), hat_up.get_color_data(), hat_up.get_amount_of_vertex(), hat_up.get_index_length(), hat_up.get_vertex_dim());
 
@@ -245,7 +248,7 @@ void Robot::draw() {
 
 	model_matrix = model_arm_L_U;
 	draw_part_normal(arm_L_U.get_vertex(), arm_L_U.get_index(), arm_L_U.get_color_data(), arm_L_U.get_amount_of_vertex(), arm_L_U.get_index_length(), arm_L_U.get_vertex_dim());
-	
+
 	model_matrix = model_joint_arm_R_U;
 	draw_part_normal(joint_arm_R_U.get_vertex(), joint_arm_R_U.get_index(), joint_arm_R_U.get_color_data(), joint_arm_R_U.get_amount_of_vertex(), joint_arm_R_U.get_index_length(), joint_arm_R_U.get_vertex_dim());
 
@@ -341,7 +344,7 @@ void Robot::draw() {
 
 	model_matrix = model_hand_R_4;
 	draw_part_normal(hand_R_4.get_vertex(), hand_R_4.get_index(), hand_R_4.get_color_data(), hand_R_4.get_amount_of_vertex(), hand_R_4.get_index_length(), hand_R_4.get_vertex_dim());
-	
+
 }
 
 void Robot::draw_part_normal(float *vertex_data, unsigned int *index_data, float *color_data, unsigned int amount, unsigned int length, unsigned int dim) {
@@ -373,7 +376,7 @@ void Robot::draw_part_normal(float *vertex_data, unsigned int *index_data, float
 }
 
 void Robot::draw_part_texture(float *vertex_data, unsigned int *index_data, float *tc_data, unsigned int amount, unsigned int tc_length, unsigned int length, unsigned int dim) {
-	
+
 	glBindBuffer(GL_ARRAY_BUFFER, buffer1);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(vertex_data)*amount * dim, vertex_data, GL_STATIC_DRAW);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
@@ -384,7 +387,7 @@ void Robot::draw_part_texture(float *vertex_data, unsigned int *index_data, floa
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer2);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(index_data)*length, index_data, GL_STATIC_DRAW);
-	
+
 	// Bind the texture to Texture Image Unit 0
 	glActiveTexture(GL_TEXTURE0);
 	// glBindTexturewill bind Texture Objects to Texture Image Units!
@@ -574,38 +577,31 @@ void My_Init()
 }
 
 // GLUT callback. Called to draw the scene.
-void My_Display(){
-	if(mode == 0){
+void My_Display() {
+	if (mode == 0) {
 		// Clear display buffer
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		robot.prepare_modle();
 		robot.draw();
-		glutSwapBuffers(); 
+		glutSwapBuffers();
 	}
-	else if(mode == 1){
+	else if (mode == 1) {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		animationTimeSinceStart = glutGet(GLUT_ELAPSED_TIME);
 		animationDeltaTime = animationTimeSinceStart - animationOldTimeSinceStart;
 		animationOldTimeSinceStart = animationTimeSinceStart;
 		mat4 rotation_matrix, translation_matrix;
 
-
 		if (greeting_phase_1 == false) {
-			if (greeting_phase_1_arm_angle < 180 || greeting_phase_1_hand_angle < 30) {
-				if (greeting_phase_1_arm_angle < 180) {
-					rotation_matrix = rotate(robot.model_joint_arm_R_U, (float)animationDeltaTime / 1000, vec3(1, 0, 0));
-					robot.model_joint_arm_R_U = rotation_matrix;
-					greeting_phase_1_arm_angle += degrees((float)animationDeltaTime / 1000);
+			if (greeting_phase_1_arm_angle < 180) {
+				rotation_matrix = rotate(robot.model_joint_arm_R_U, (float)animationDeltaTime / 100, vec3(1, 0, 0));
+				robot.model_joint_arm_R_U = rotation_matrix;
+				if ((float)animationDeltaTime != 0) {
+					greeting_phase_1_arm_angle += degrees((float)animationDeltaTime / 100);
 				}
 				robot.model_arm_R_U = translate(robot.model_joint_arm_R_U, vec3(0.2*sin(radians(-40.0f)), -0.2*cos(radians(-40.0f)), 0.0f))*rotate(mat4(1.0f), radians(-40.0f), vec3(0, 0, 1));
 				robot.model_joint_arm_R_D = translate(robot.model_arm_R_U, vec3(0.0f, -0.2f, 0.0f));
 				robot.model_arm_R_D = translate(robot.model_joint_arm_R_D, vec3(0.25*sin(radians(30.0f)), -0.25*cos(radians(30.0f)), 0.0f))*rotate(mat4(1.0f), radians(30.0f), vec3(0, 0, 1));
-				if (greeting_phase_1_hand_angle < 30) {
-					rotation_matrix = rotate(robot.model_joint_hand_R, (float)animationDeltaTime / 1000, vec3(0, 0, 1));
-					robot.model_joint_hand_R = rotation_matrix;
-					greeting_phase_1_hand_angle += degrees((float)animationDeltaTime / 1000);
-				}
-				
 				robot.model_joint_hand_R = translate(robot.model_arm_R_D, vec3(0.0f, -0.2f, 0.0f));
 				robot.model_hand_R_1 = translate(robot.model_joint_hand_R, vec3(-0.05f + 0.1*sin(radians(-5.0f)), -0.015f - 0.1*cos(radians(-5.0f)), 0.0f))*rotate(mat4(1.0f), radians(-5.0f), vec3(0, 0, 1));
 				robot.model_joint_finger_R_1 = translate(robot.model_hand_R_1, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
@@ -614,8 +610,8 @@ void My_Display(){
 				robot.model_joint_finger_R_2 = translate(robot.model_hand_R_3, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
 				robot.model_hand_R_4 = translate(robot.model_joint_finger_R_2, vec3(-0.01 - 0.05*sin(radians(15.0f)), 0.0, -0.02 - 0.05*cos(radians(15.0f))))*rotate(mat4(1.0f), radians(15.0f), vec3(0, 1, 0));
 			}
-			/*else if (greeting_phase_1_hand_angle < 30) {
-				rotation_matrix = rotate(robot.model_joint_hand_R, (float)animationDeltaTime / 1000, vec3(0, 0, 1));
+			else if (greeting_phase_1_hand_angle < 30) {
+				rotation_matrix = rotate(robot.model_joint_hand_R, (float)animationDeltaTime / 100, vec3(0, 0, 1));
 				robot.model_joint_hand_R = rotation_matrix;
 				robot.model_hand_R_1 = translate(robot.model_joint_hand_R, vec3(-0.05f + 0.1*sin(radians(-5.0f)), -0.015f - 0.1*cos(radians(-5.0f)), 0.0f))*rotate(mat4(1.0f), radians(-5.0f), vec3(0, 0, 1));
 				robot.model_joint_finger_R_1 = translate(robot.model_hand_R_1, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
@@ -623,17 +619,108 @@ void My_Display(){
 				robot.model_hand_R_3 = translate(robot.model_joint_hand_R, vec3(0.05f + 0.1*sin(radians(5.0f)), -0.015f - 0.1*cos(radians(5.0f)), 0.0f))*rotate(mat4(1.0f), radians(5.0f), vec3(0, 0, 1));
 				robot.model_joint_finger_R_2 = translate(robot.model_hand_R_3, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
 				robot.model_hand_R_4 = translate(robot.model_joint_finger_R_2, vec3(-0.01 - 0.05*sin(radians(15.0f)), 0.0, -0.02 - 0.05*cos(radians(15.0f))))*rotate(mat4(1.0f), radians(15.0f), vec3(0, 1, 0));
-
-				greeting_phase_1_hand_angle += degrees((float)animationDeltaTime / 1000);
-			}*/
-			else{
+				if ((float)animationDeltaTime != 0) {
+					greeting_phase_1_hand_angle += degrees((float)animationDeltaTime / 100);
+				}
+			}
+			else {
 				greeting_phase_1 = true;
 			}
 		}
 		else if (greeting_phase_2 == false) {
-			
+			if (greeting_phase_2_hand_angle < 60) {
+				rotation_matrix = rotate(robot.model_joint_hand_R, -(float)animationDeltaTime / 100, vec3(0, 0, 1));
+				robot.model_joint_hand_R = rotation_matrix;
+				robot.model_hand_R_1 = translate(robot.model_joint_hand_R, vec3(-0.05f + 0.1*sin(radians(-5.0f)), -0.015f - 0.1*cos(radians(-5.0f)), 0.0f))*rotate(mat4(1.0f), radians(-5.0f), vec3(0, 0, 1));
+				robot.model_joint_finger_R_1 = translate(robot.model_hand_R_1, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
+				robot.model_hand_R_2 = translate(robot.model_joint_finger_R_1, vec3(0.01 - 0.05*sin(radians(-15.0f)), 0.0, -0.02 - 0.05*cos(radians(-15.0f))))*rotate(mat4(1.0f), radians(-15.0f), vec3(0, 1, 0));
+				robot.model_hand_R_3 = translate(robot.model_joint_hand_R, vec3(0.05f + 0.1*sin(radians(5.0f)), -0.015f - 0.1*cos(radians(5.0f)), 0.0f))*rotate(mat4(1.0f), radians(5.0f), vec3(0, 0, 1));
+				robot.model_joint_finger_R_2 = translate(robot.model_hand_R_3, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
+				robot.model_hand_R_4 = translate(robot.model_joint_finger_R_2, vec3(-0.01 - 0.05*sin(radians(15.0f)), 0.0, -0.02 - 0.05*cos(radians(15.0f))))*rotate(mat4(1.0f), radians(15.0f), vec3(0, 1, 0));
+				robot.model_hat_down = translate(robot.model_hand_R_4, vec3(0.55f, -0.1f, 0.0f))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
+				robot.model_hat_up = translate(robot.model_hat_down, vec3(0.0f, 0.3f, 0.0f));
+
+				greeting_phase_2_hand_angle += degrees((float)animationDeltaTime / 100);
+			}
+			else {
+				greeting_phase_2 = true;
+			}
+		}
+		else if (greeting_phase_3 == false) {
+			if (clock < 2000) {
+				clock += animationDeltaTime;
+			}
+			else {
+				greeting_phase_3 = true;
+			}
 		}
 		else {
+			robot.model_body = mat4(1.0f);
+			mode = 0;
+		}
+		robot.draw();
+		glutSwapBuffers();
+	}
+	else if (mode == 2) {
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		animationTimeSinceStart = glutGet(GLUT_ELAPSED_TIME);
+		animationDeltaTime = animationTimeSinceStart - animationOldTimeSinceStart;
+		animationOldTimeSinceStart = animationTimeSinceStart;
+		mat4 rotation_matrix, translation_matrix;
+		
+		if (bow_phase_1 == false) {
+			if (bow_1_body_angle < 30) {
+				rotation_matrix = rotate(robot.model_body, -(float)animationDeltaTime / 500, vec3(1, 0, 0));
+				robot.model_body = rotation_matrix;
+				robot.model_head = translate(robot.model_body, vec3(0.0f, 1.0f, 0.0f));
+				robot.model_hat_down = translate(robot.model_head, vec3(0.0f, 0.45f, 0.0f));
+				robot.model_hat_up = translate(robot.model_hat_down, vec3(0.0f, 0.15f, 0.0f));
+				robot.model_eye_L = translate(robot.model_head, vec3(0.25f, 0.2f, -0.35f));
+				robot.model_eye_R = translate(robot.model_head, vec3(-0.25f, 0.2f, -0.35f));
+
+				robot.model_joint_arm_L_U = translate(robot.model_body, vec3(0.4f, 0.5f, 0.0f));
+				robot.model_arm_L_U = translate(robot.model_joint_arm_L_U, vec3(0.2*sin(radians(40.0f)), -0.2*cos(radians(40.0f)), 0.0f))*rotate(mat4(1.0f), radians(40.0f), vec3(0, 0, 1));
+				robot.model_joint_arm_R_U = translate(robot.model_body, vec3(-0.4f, 0.5f, 0.0f));
+				robot.model_arm_R_U = translate(robot.model_joint_arm_R_U, vec3(0.2*sin(radians(-40.0f)), -0.2*cos(radians(-40.0f)), 0.0f))*rotate(mat4(1.0f), radians(-40.0f), vec3(0, 0, 1));
+				robot.model_joint_arm_L_D = translate(robot.model_arm_L_U, vec3(0.0f, -0.2f, 0.0f));
+				robot.model_arm_L_D = translate(robot.model_joint_arm_L_D, vec3(0.25*sin(radians(-30.0f)), -0.25*cos(radians(-30.0f)), 0.0f))*rotate(mat4(1.0f), radians(-30.0f), vec3(0, 0, 1));
+				robot.model_arm_L_D = translate(robot.model_arm_L_D, vec3(0.0, 0.0, -0.25*sin(radians(30.0f))))*rotate(mat4(1.0f), radians(30.0f), vec3(1, 0, 0));
+				robot.model_joint_arm_R_D = translate(robot.model_arm_R_U, vec3(0.0f, -0.2f, 0.0f));
+				robot.model_arm_R_D = translate(robot.model_joint_arm_R_D, vec3(0.25*sin(radians(30.0f)), -0.25*cos(radians(30.0f)), 0.0f))*rotate(mat4(1.0f), radians(30.0f), vec3(0, 0, 1));
+				robot.model_arm_R_D = translate(robot.model_arm_R_D, vec3(0.0, 0.0, -0.25*sin(radians(30.0f))))*rotate(mat4(1.0f), radians(30.0f), vec3(1, 0, 0));
+
+				robot.model_joint_hand_L = translate(robot.model_arm_L_D, vec3(0.0f, -0.15f, 0.0f));
+				robot.model_hand_L_1 = translate(robot.model_joint_hand_L, vec3(0.05f + 0.1*sin(radians(5.0f)), -0.015f - 0.1*cos(radians(5.0f)), 0.0f))*rotate(mat4(1.0f), radians(5.0f), vec3(0, 0, 1));
+				robot.model_joint_finger_L_1 = translate(robot.model_hand_L_1, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
+				robot.model_hand_L_2 = translate(robot.model_joint_finger_L_1, vec3(-0.01 - 0.05*sin(radians(15.0f)), 0.0, -0.02 - 0.05*cos(radians(15.0f))))*rotate(mat4(1.0f), radians(15.0f), vec3(0, 1, 0));
+				robot.model_hand_L_3 = translate(robot.model_joint_hand_L, vec3(-0.05f + 0.1*sin(radians(-5.0f)), -0.015f - 0.1*cos(radians(-5.0f)), 0.0f))*rotate(mat4(1.0f), radians(-5.0f), vec3(0, 0, 1));
+				robot.model_joint_finger_L_2 = translate(robot.model_hand_L_3, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
+				robot.model_hand_L_4 = translate(robot.model_joint_finger_L_2, vec3(0.01 - 0.05*sin(radians(-15.0f)), 0.0, -0.02 - 0.05*cos(radians(-15.0f))))*rotate(mat4(1.0f), radians(-15.0f), vec3(0, 1, 0));
+
+				robot.model_joint_hand_R = translate(robot.model_arm_R_D, vec3(0.0f, -0.15f, 0.0f));
+				robot.model_hand_R_1 = translate(robot.model_joint_hand_R, vec3(-0.05f + 0.1*sin(radians(-5.0f)), -0.015f - 0.1*cos(radians(-5.0f)), 0.0f))*rotate(mat4(1.0f), radians(-5.0f), vec3(0, 0, 1));
+				robot.model_joint_finger_R_1 = translate(robot.model_hand_R_1, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
+				robot.model_hand_R_2 = translate(robot.model_joint_finger_R_1, vec3(0.01 - 0.05*sin(radians(-15.0f)), 0.0, -0.02 - 0.05*cos(radians(-15.0f))))*rotate(mat4(1.0f), radians(-15.0f), vec3(0, 1, 0));
+				robot.model_hand_R_3 = translate(robot.model_joint_hand_R, vec3(0.05f + 0.1*sin(radians(5.0f)), -0.015f - 0.1*cos(radians(5.0f)), 0.0f))*rotate(mat4(1.0f), radians(5.0f), vec3(0, 0, 1));
+				robot.model_joint_finger_R_2 = translate(robot.model_hand_R_3, vec3(0.0f, -0.1 - 0.075*sin(radians(-90.0f)), 0.0))*rotate(mat4(1.0f), radians(-90.0f), vec3(1, 0, 0));
+				robot.model_hand_R_4 = translate(robot.model_joint_finger_R_2, vec3(-0.01 - 0.05*sin(radians(15.0f)), 0.0, -0.02 - 0.05*cos(radians(15.0f))))*rotate(mat4(1.0f), radians(15.0f), vec3(0, 1, 0));
+				
+				bow_1_body_angle += degrees((float)animationDeltaTime / 500);
+			}
+			else {
+				bow_phase_1 = true;
+			}
+		}
+		else if (bow_phase_2 == false) {
+			if (clock < 2000) {
+				clock += animationDeltaTime;
+			}
+			else {
+				bow_phase_2 = true;
+			}
+		}
+		else {
+			robot.model_body = mat4(1.0f);
 			mode = 0;
 		}
 		robot.draw();
@@ -650,7 +737,7 @@ void My_Reshape(int width, int height)
 
 	float viewportAspect = (float)width / (float)height;
 	projection = perspective(radians(60.0f), viewportAspect, 0.1f, 1000.0f);
-	view = lookAt( vec3(0.0f,1.0f,-4.0f) , vec3(0.0f,0.0f,1.0f) , vec3(0.0f,1.0f,0.0f));
+	view = lookAt(vec3(0.0f, 1.0f, -4.0f), vec3(0.0f, 0.0f, 1.0f), vec3(0.0f, 1.0f, 0.0f));
 }
 
 
@@ -672,7 +759,7 @@ void My_Keyboard(unsigned char key, int x, int y)
 void My_SpecialKeys(int key, int x, int y)
 {
 	mat4 rotation_matrix;
-	
+
 	switch (key)
 	{
 	case GLUT_KEY_UP:
@@ -684,12 +771,14 @@ void My_SpecialKeys(int key, int x, int y)
 			keyStates[3] = false;
 		}
 		else {
-			timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
-			deltaTime = timeSinceStart - oldTimeSinceStart;
-			oldTimeSinceStart = timeSinceStart;
+			if (mode == 0) {
+				timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
+				deltaTime = timeSinceStart - oldTimeSinceStart;
+				oldTimeSinceStart = timeSinceStart;
 
-			rotation_matrix = rotate(robot.model_body, (float)deltaTime / 1000, vec3(1, 0, 0));
-			robot.model_body = rotation_matrix;
+				rotation_matrix = rotate(robot.model_body, (float)deltaTime / 1000, vec3(1, 0, 0));
+				robot.model_body = rotation_matrix;
+			}
 		}
 		break;
 	case GLUT_KEY_LEFT:
@@ -701,12 +790,14 @@ void My_SpecialKeys(int key, int x, int y)
 			keyStates[3] = false;
 		}
 		else {
-			timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
-			deltaTime = timeSinceStart - oldTimeSinceStart;
-			oldTimeSinceStart = timeSinceStart;
+			if (mode == 0) {
+				timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
+				deltaTime = timeSinceStart - oldTimeSinceStart;
+				oldTimeSinceStart = timeSinceStart;
 
-			rotation_matrix = rotate(robot.model_body, (float)deltaTime / 1000, vec3(0, 1, 0));
-			robot.model_body = rotation_matrix;
+				rotation_matrix = rotate(robot.model_body, (float)deltaTime / 1000, vec3(0, 1, 0));
+				robot.model_body = rotation_matrix;
+			}
 		}
 		break;
 	case GLUT_KEY_DOWN:
@@ -718,12 +809,14 @@ void My_SpecialKeys(int key, int x, int y)
 			keyStates[3] = false;
 		}
 		else {
-			timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
-			deltaTime = timeSinceStart - oldTimeSinceStart;
-			oldTimeSinceStart = timeSinceStart;
+			if (mode == 0) {
+				timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
+				deltaTime = timeSinceStart - oldTimeSinceStart;
+				oldTimeSinceStart = timeSinceStart;
 
-			rotation_matrix = rotate(robot.model_body, -(float)deltaTime / 1000, vec3(1, 0, 0));
-			robot.model_body = rotation_matrix;
+				rotation_matrix = rotate(robot.model_body, -(float)deltaTime / 1000, vec3(1, 0, 0));
+				robot.model_body = rotation_matrix;
+			}
 		}
 		break;
 	case GLUT_KEY_RIGHT:
@@ -735,12 +828,14 @@ void My_SpecialKeys(int key, int x, int y)
 			keyStates[3] = true;
 		}
 		else {
-			timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
-			deltaTime = timeSinceStart - oldTimeSinceStart;
-			oldTimeSinceStart = timeSinceStart;
+			if (mode == 0) {
+				timeSinceStart = glutGet(GLUT_ELAPSED_TIME);
+				deltaTime = timeSinceStart - oldTimeSinceStart;
+				oldTimeSinceStart = timeSinceStart;
 
-			rotation_matrix = rotate(robot.model_body, -(float)deltaTime / 1000, vec3(0, 1, 0));
-			robot.model_body = rotation_matrix;
+				rotation_matrix = rotate(robot.model_body, -(float)deltaTime / 1000, vec3(0, 1, 0));
+				robot.model_body = rotation_matrix;
+			}
 		}
 		break;
 	default:
@@ -787,6 +882,8 @@ void My_Menu(int id)
 		{
 			timer_enabled = true;
 			glutTimerFunc(timer_speed, My_Timer, 0);
+			animationOldTimeSinceStart = glutGet(GLUT_ELAPSED_TIME);
+			animationTimeSinceStart = glutGet(GLUT_ELAPSED_TIME);
 		}
 		break;
 	case MENU_TIMER_STOP:
@@ -797,17 +894,36 @@ void My_Menu(int id)
 		break;
 	case MENU_IDLE:
 		mode = 0;
+		robot.model_body = mat4(1.0f);
 		break;
 	case MENU_GREETING:
-		mode = 1;
-		greeting_phase_1_arm_angle = 0;
-		greeting_phase_1_hand_angle = 0;
-		greeting_phase_1 = false;
-		greeting_phase_2 = false;
-		greeting_phase_3 = false;
-		greeting_phase_4 = false;
-		animationOldTimeSinceStart = glutGet(GLUT_ELAPSED_TIME);
-		robot.prepare_modle();
+		if (mode != 1) {
+			mode = 1;
+			robot.model_body = mat4(1.0f);
+			greeting_phase_1_arm_angle = 0;
+			greeting_phase_1_hand_angle = 0;
+			greeting_phase_2_hand_angle = 0;
+			clock = 0;
+			greeting_phase_1 = false;
+			greeting_phase_2 = false;
+			greeting_phase_3 = false;
+			animationOldTimeSinceStart = glutGet(GLUT_ELAPSED_TIME);
+			robot.prepare_modle();
+		}
+		break;
+	case MENU_BOW:
+		if (mode != 2) {
+			mode = 2;
+			robot.model_body = mat4(1.0f);
+			bow_1_body_angle = 0;
+			bow_1_leg_angle = 0;
+			bow_phase_1 = false;
+			bow_phase_2 = false;
+			bow_phase_3 = false;
+			clock = 0;
+			animationOldTimeSinceStart = glutGet(GLUT_ELAPSED_TIME);
+			robot.prepare_modle();
+		}
 		break;
 	default:
 		break;
@@ -838,13 +954,13 @@ int main(int argc, char *argv[])
 	// Initialize GLUT and GLEW, then create a window.
 	glutInit(&argc, argv);
 #ifdef _MSC_VER
-	glutInitDisplayMode( GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH );
+	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 #else
 	glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 #endif
-	
-	glutInitWindowPosition( 100 ,100 );
-	glutInitWindowSize( 600, 600);
+
+	glutInitWindowPosition(100, 100);
+	glutInitWindowSize(600, 600);
 	glutCreateWindow("103062230_AS1");
 
 
@@ -860,9 +976,9 @@ int main(int argc, char *argv[])
 
 	glutSetMenu(menu_main);
 	glutAddSubMenu("Timer", menu_timer);
-	glutAddSubMenu("Speed", menu_speed);
 	glutAddMenuEntry("Idle", MENU_IDLE);
 	glutAddMenuEntry("Greeting", MENU_GREETING);
+	glutAddMenuEntry("Bow", MENU_BOW);
 	glutAddMenuEntry("Exit", MENU_EXIT);
 
 	glutSetMenu(menu_timer);
